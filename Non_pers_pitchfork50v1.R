@@ -89,7 +89,7 @@ plot(results, "prec/rec", annotate=T, main="Precisi?n/Recall")
 #########################################################
 
 algorithms <- list(
-  RANDOM = list(name = "RANDOM", param = NULL)
+  RANDOM = list(name = "POPULAR", param = NULL)
 )
 
 #########################################################
