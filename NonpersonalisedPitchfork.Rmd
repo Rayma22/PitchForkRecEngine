@@ -1,0 +1,100 @@
+---
+title: "Non-personalised Pitchfork"
+output: html_document
+date: "2023-11-13"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+Read In Necessary Libraries
+
+```{r}
+library('recommenderlab')
+library(reshape2)
+```
+
+Read the CSV, this version contains only 3 columns - authors, artists and authors.
+
+```{r}
+df <- read.csv("C:\\Users\\majon\\OneDrive\\Pulpit\\IE docs\\SEMESTER 5\\Recommendation Engines\\Final Project\\GitHubFinalProject\\PitchForkRecEngine\\user_item_mat_pitchfork.csv")
+head(df)
+```
+
+Now, we will turn this table into a realRatingMatrix which is readable by the "recommenderlab" package, in order to use its functions.
+
+We use a dcast function to match each user (author) with our item (artist) and the corresponding scores between, it can happean in this dataset that a user rated an artist two or more times, then we are taking a mean of those ratings.
+
+```{r}
+# Reorder columns to match our transformation.
+df_reordered <- df[, c("artist", "author", "score")]
+
+# Making sure all values are numeric
+df_reordered$score <- as.numeric(df_reordered$score)
+
+# Now we use a d cast to match each user (author) with our item (artist) and the corresponding scores between, it can happean in this dataset that a user rated an artist two or more times, then we are taking a mean of those ratings.
+df_testmat <- dcast(df_reordered, author ~ artist, value.var = "score", fun.aggregate = function(x) mean(x, na.rm = TRUE))
+# Since first column is row names, we need to delete it and save it as the tables index.
+row.names(df_testmat) <- df_testmat$author
+df_testmat <- df_testmat[, -1]
+
+# We make sure everything is numerical, otherwise recommenderlab will not take it in.
+class(df_testmat$'1990s')
+# lapply(df_testmat, class)
+
+# Here we turn a dcast table into an standart matrix.
+df_testmat <- as.matrix(df_testmat)
+# We check for numericals again.
+class(df_testmat['1990s'])
+# lapply(df_testmat, class)
+
+# Since, we take a mean for some of the scores have long values after the comma, we we will round those to 2.
+df_testmat <- round(df_testmat, 2)
+
+# We finally change our matrix into realRatingMatrix
+df_mat <- as(df_testmat, "realRatingMatrix")
+
+df_mat
+```
+
+Now we will use 'evaluationScheme' function to Split the data into train (90%), and test (know and unknown, 10%). After a careful study of the best value of given we have came into conclusion to use users with 10 reviews or more. For example in the whole data set we have 536 users, those who gave 3 or more scores there is 363, for 10 its already 247. In that way we can cut down on those who gave little reviews and prove no much of a pattern into our model. With 10 we already have a good based of somewhat experience users of which sentiments we can use for the non-personalized recommendation engine. k = 1 is a default for the split function.
+
+```{r}
+# Divide data
+e <- evaluationScheme(df_mat, method = "split", train = 0.9, k=1, given=10) 
+e
+```
+
+Let us see the effect of our split function. 222 users were taken into the train set and 25 into the test.
+
+```{r}
+getData(e, "train")
+getData(e, "known")
+getData(e, "unknown")
+```
+
+Now we will train our recommender with method RANDOM, that means it just gives random recommendations, so likely worst of out models.
+
+```{r}
+r_random <- Recommender(getData(e, "train"), method = "RANDOM")
+r_random
+```
+
+Another method worth a try is the recommendation by popularity. That means items with most reviews.
+
+```{r}
+r_popular <- Recommender(getData(e, "train"), method = "POPULAR")
+r_popular
+```
+
+Re-Recommend, recommends highly rated items.
+
+```{r}
+r_rerec <- Recommender(getData(e, "train"), method = "RERECOMMEND")
+r_rerec
+```
+
+Now, we will move on to making the predictions using those models.
