@@ -8,7 +8,9 @@ date: "2023-11-13"
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
-## R Markdown
+# Non-personalized Recommenders
+
+## Read in Libraries and Data
 
 Read In Necessary Libraries
 
@@ -23,6 +25,8 @@ Read the CSV, this version contains only 3 columns - authors, artists and author
 df <- read.csv("C:\\Users\\majon\\OneDrive\\Pulpit\\IE docs\\SEMESTER 5\\Recommendation Engines\\Final Project\\GitHubFinalProject\\PitchForkRecEngine\\user_item_mat_pitchfork.csv")
 head(df)
 ```
+
+## Transform into realRatingMatrix
 
 Now, we will turn this table into a realRatingMatrix which is readable by the "recommenderlab" package, in order to use its functions.
 
@@ -60,6 +64,8 @@ df_mat <- as(df_testmat, "realRatingMatrix")
 df_mat
 ```
 
+## Split the data
+
 Now we will use 'evaluationScheme' function to Split the data into train (90%), and test (know and unknown, 10%). After a careful study of the best value of given we have came into conclusion to use users with 10 reviews or more. For example in the whole data set we have 536 users, those who gave 3 or more scores there is 363, for 10 its already 247. In that way we can cut down on those who gave little reviews and prove no much of a pattern into our model. With 10 we already have a good based of somewhat experience users of which sentiments we can use for the non-personalized recommendation engine. k = 1 is a default for the split function.
 
 ```{r}
@@ -68,13 +74,15 @@ e <- evaluationScheme(df_mat, method = "split", train = 0.9, k=1, given=10)
 e
 ```
 
-Let us see the effect of our split function. 222 users were taken into the train set and 25 into the test.
+Let us see the effect of our split function. 222 users were taken into the train set and 25 into the test. Known has some ratings that will be used for prediction, unknown has other ratings that after the prediction will be compared with predicted values to evaluate model performance.
 
 ```{r}
 getData(e, "train")
 getData(e, "known")
 getData(e, "unknown")
 ```
+
+## Create first reccomenders
 
 Now we will train our recommender with method RANDOM, that means it just gives random recommendations, so likely worst of out models.
 
@@ -90,11 +98,591 @@ r_popular <- Recommender(getData(e, "train"), method = "POPULAR")
 r_popular
 ```
 
-Re-Recommend, recommends highly rated items.
+Re-Recommend, recommends highly rated items, by the user in the past.
 
 ```{r}
 r_rerec <- Recommender(getData(e, "train"), method = "RERECOMMEND")
 r_rerec
 ```
 
-Now, we will move on to making the predictions using those models.
+Hybrid recommender using a combination of random and popular methods.
+
+```{r}
+r_hybrid_list <- list(
+  RANDOM = list(name = "RANDOM", param = NULL),
+  POPULAR = list(name = "POPULAR", param = NULL)
+)
+```
+
+```{r}
+r_hybrid <- Recommender(getData(e, "train"), method = "HYBRID", parameter = list(recommenders = r_hybrid_list))
+r_hybrid
+```
+
+## Create first predictions
+
+Now, we will move on to making the predictions using those models. First, we will save known data as variable "a".
+
+```{r}
+a <- getData(e, "known")
+```
+
+Then we will use the predict function with two parameters, one being one of the selected networks, another one being the known data sample, for example we can treat them as new users in the network. Type of information used are ratings, we annotate that in the predict function, this means the predict function will only return the predicted ratings, with known ratings represented by NA-s. This is the step to create a recommendations using our train recommender model. We will obtain a matrix with predicted ratings, to later be compared with the unknowns, to estimate the goodness of fit, and evaluate the performance of all other non personalised models.
+
+```{r}
+p_random <- predict(r_random, a, type = "ratings")
+p_random
+```
+
+```{r}
+p_popular <- predict(r_popular, a, type = "ratings")
+p_popular
+```
+
+```{r}
+p_rerec <- predict(r_rerec, a, type = "ratings")
+p_rerec
+```
+
+```{r}
+p_hybrid <- predict(r_hybrid, a, type = "ratings")
+p_hybrid
+```
+
+Here a code block to understand more about the made predictions.
+
+```{r}
+#Some info about our predictions
+# Adviced, run by one.
+
+dimnames(p_rerec)
+rowCounts(p_rerec) ## number of ratings per user
+colCounts(p_rerec) ## number of ratings per item
+colMeans(p_rerec) ## average item rating
+nratings(p_rerec) ## total number of ratings
+hasRating(p_rerec)
+```
+
+Example of the imputed ratings for user 0 in the test set. First 12 artists.
+
+```{r}
+as(p_popular, 'list')$`0`[1:12]
+```
+
+## Evaluate first predictions
+
+To get the initial intuition on how different selected models perform we will use the
+
+```{r}
+calcPredictionAccuracy(p_random, getData(e, "unknown"))
+```
+
+```{r}
+calcPredictionAccuracy(p_popular, getData(e, "unknown"))
+```
+
+```{r}
+calcPredictionAccuracy(p_rerec, getData(e, "unknown"))
+```
+
+```{r}
+calcPredictionAccuracy(p_hybrid, getData(e, "unknown"))
+```
+
+In the last one since it re-recommends, the previous users ratings. We do not obtain in the prediction, predicted ratings for other Artists (Items), therefore there is no way of calculating the prediction accuracy metrics. It is important to mention that this technique would not likely be used with regard to new users, since we have no information about them, yet for example there could be situations where an already not new user likes to come back to their highly rated artists, under those circumstances such a recommender would be useful, also it is not a non-personalized method and was showcased here as an example of another simple, yet what could be proven to be quite powerful recommender.
+
+For the previous two engines, random and popular. Popular wins by a majority, it has significantly lower all error metrics. Hybrid has higher errors then popular.
+
+## Recommendation using Good Ratings.
+
+goodRating is a parameter which can be added to a model to mark a threshold between a good and bad rating. For example for our recommendation engine we will set it to 6.5, since we operate on a 1-10 scale. Then, all user ratings over or equal to that number will be considered positives for the evaluation process. Lets set it.
+
+```{r}
+e2 <- evaluationScheme(df_mat, method="split", train=0.9,
+                       k=1, given=10,goodRating=6.5)
+e2
+```
+
+Now, we will again build two recommenders for random and popular, this time using the goodRating data.
+
+```{r}
+r2_random <- Recommender(getData(e2, "train"), "RANDOM")
+r2_random
+```
+
+```{r}
+r2_popular <- Recommender(getData(e2, "train"), "POPULAR")
+r2_popular
+```
+
+```{r}
+r2_hybrid <- Recommender(getData(e2, "train"), method = "HYBRID", parameter = list(recommenders = r_hybrid_list))
+r2_hybrid
+```
+
+Again, we predict. Type "topNList" is an argument that creates an already full top-N list with recommendations, it is a default for the predict function.
+
+```{r}
+p2_random <- predict(r2_random, getData(e2, "known"), type = "topNList")
+p2_random
+```
+
+```{r}
+p2_popular <- predict(r2_popular, getData(e2, "known"), type = "topNList")
+p2_popular
+```
+
+```{r}
+p2_hybrid <- predict(r2_hybrid, getData(e2, "known"), type = "topNList")
+p2_hybrid
+```
+
+It recommended the top 10 items/artists for the user. Lets see it for popular. Note: Here we show it for 1 person, but because it is by popularity, all the predictions are exactly the same for all the users in the test set. The Beatles seem to be nr. 1.
+
+```{r}
+as(p2_popular, 'list')[1]
+```
+
+Now let us again evaluate the prediction accuracy of those recommenders.
+
+```{r}
+calcPredictionAccuracy(p2_random, getData(e2, "unknown"), given = 10, goodRating = 6.5)
+```
+
+```{r}
+calcPredictionAccuracy(p2_popular, getData(e2, "unknown"), given = 10, goodRating = 6.5)
+```
+
+```{r}
+calcPredictionAccuracy(p2_hybrid, getData(e2, "unknown"), given = 10, goodRating = 6.5)
+```
+
+Unfortunately, the prediction accuracy for both of those non-presonalised recommendation engines is very poor, with the popular method doing slightly better with the true positive rate of: 0.0019 vs. 0.0003. Hybrid was close to popular with TPR of 0.0013, performing only slightly worse then popular for n=10.
+
+## Further model evaluation
+
+Load the Metrics library.
+
+```{r}
+library(Metrics)
+```
+
+Here we calculate the mae and rmse, for a single case. realRatingMatrix predictions and the unknown are transformed into a normal matrix, saved as predicted and actual. In this case we compare the prediction of the artist '!!!'. Later for all rated artists from the unknown set.
+
+```{r}
+predicted <-as(p_popular, "matrix")
+actual<-as(getData(e, "unknown"), "matrix")
+mae(actual['Larry Fitzmaurice', '!!!'],predicted['Larry Fitzmaurice', '!!!'])
+rmse(actual['Larry Fitzmaurice', '!!!'],predicted['Larry Fitzmaurice', '!!!'])
+```
+
+```{r}
+# Popular
+mae(na.omit(actual['Larry Fitzmaurice', ]), na.omit(predicted['Larry Fitzmaurice', ]))
+rmse(na.omit(actual['Larry Fitzmaurice', ]), na.omit(predicted['Larry Fitzmaurice', ]))
+```
+
+```{r}
+# Random
+predicted2 <-as(p_random, "matrix")
+actual2 <-as(getData(e, "unknown"), "matrix")
+mae(na.omit(actual2['Larry Fitzmaurice', ]), na.omit(predicted2['Larry Fitzmaurice', ]))
+rmse(na.omit(actual2['Larry Fitzmaurice', ]), na.omit(predicted2['Larry Fitzmaurice', ]))
+```
+
+```{r}
+# Hybrid
+predicted3 <-as(p_hybrid, "matrix")
+actual3 <-as(getData(e, "unknown"), "matrix")
+mae(na.omit(actual3['Larry Fitzmaurice', ]), na.omit(predicted3['Larry Fitzmaurice', ]))
+rmse(na.omit(actual3['Larry Fitzmaurice', ]), na.omit(predicted3['Larry Fitzmaurice', ]))
+```
+
+Popular again proved to be the model with least error. At least in the case of Larry Fitzmaurice. Note: the list of users can change due to the random state initialized in the train/test split.
+
+Now, we will move on to another model evaluation methods.
+
+Here we can evaluate one or more models, given a certain number of n - different number of n used for the generation of the topNlist, its metrics are evaluated for every step of n given in the vector. Here we will use the popular method and later plot the change in precision/recall given the value of recommended items in the topNlist. Along with the popular method we will evaluate random, and a hybrid method which combines two of the previos methods.
+
+```{r}
+algorithms <- list(
+  POPULAR = list(name = "POPULAR", param = NULL),
+  RANDOM = list(name = "RANDOM", param = NULL),
+  HYBRID = list(name = "HYBRID", param =
+      list(recommenders = list(
+          RANDOM = list(name = "RANDOM", param = NULL),
+          POPULAR = list(name = "POPULAR", param = NULL)
+        )
+      )
+  )
+)
+```
+
+```{r}
+results <- evaluate(x=e2, method=algorithms, n=c(1,3,5,10,100))
+getConfusionMatrix(results[[1]])
+plot(results, "prec/rec", annotate=T, main="Precision/Recall")
+```
+
+We can see that the precision in popular was the highest for n=5, but the recall rose dramatically with bigger n, which makes sense the more we recommend the higher the chance of an worthy item found in the list. Random by far has the worst predictive power and hybrid the best for n=100, we crossed recall of 0.03.
+
+### Quick Summary for Non-Personalized
+
+Popular has proved to outperform hybrid and random models, especially for low N predictions, which at the end of the day matter the most. Users do not want to find their likely item of interest on the 90th place, but rather somewhere in the top 10. This was also the model with lowest error in rating prediction. The problem with popular topNlist is that every user gets exactly the same list, with disregard for taste for different genres, tempos and other characteristics. As this is more of a problem for content based recommendation engines. A good and easy way to limit the scope of search and likely improve performance would be to filter artists by genre and then use a topNlist based on genre. A short survey asking to mark genres of interest would be helpful. Then we would have something in between a non-personalized/personalized list of most popular items within a genre.
+
+## TopNlist by genre, selected by user.
+
+Data Read
+
+```{r}
+df2 <- read.csv("C:\\Users\\majon\\OneDrive\\Pulpit\\IE docs\\SEMESTER 5\\Recommendation Engines\\Final Project\\GitHubFinalProject\\PitchForkRecEngine\\user_item_mat_bygenre_pitchfork.csv")
+head(df2)
+```
+
+Filter by genre, for example: if we know an user likes electronic music we can filter by electronic music reviews only. We will use dplyr for filtering.
+
+```{r}
+library(dplyr)
+```
+
+```{r}
+df_electronic <- df2 %>% filter(genre == 'Electronic') %>% select(author, artist, score)
+df_electronic
+```
+
+```{r}
+# Reorder columns to match our transformation.
+df_reordered2 <- df_electronic[, c("artist", "author", "score")]
+
+# Making sure all values are numeric
+df_reordered2$score <- as.numeric(df_reordered2$score)
+
+# Now we use a d cast to match each user (author) with our item (artist) and the corresponding scores between, it can happean in this dataset that a user rated an artist two or more times, then we are taking a mean of those ratings.
+df_testmat2 <- dcast(df_reordered2, author ~ artist, value.var = "score", fun.aggregate = function(x) mean(x, na.rm = TRUE))
+# Since first column is row names, we need to delete it and save it as the tables index.
+row.names(df_testmat2) <- df_testmat2$author
+df_testmat2 <- df_testmat2[, -1]
+
+# We make sure everything is numerical, otherwise recommenderlab will not take it in.
+class(df_testmat2$'The Chainsmokers')
+# lapply(df_testmat, class)
+
+# Here we turn a dcast table into an standart matrix.
+df_testmat2 <- as.matrix(df_testmat2)
+# We check for numericals again.
+class(df_testmat2['The Chainsmokers'])
+# lapply(df_testmat, class)
+
+# Since, we take a mean for some of the scores have long values after the comma, we we will round those to 2.
+df_testmat2 <- round(df_testmat2, 2)
+
+# We finally change our matrix into realRatingMatrix
+df_mat2 <- as(df_testmat2, "realRatingMatrix")
+
+df_mat2
+```
+
+Here we have a realRatingMatrix, with 240 users and 1204 ratings all of those for electronic music genre, let us split the data for the reccomender building process. We will again use the good rating of 6.5. Unfortunately the number of revievs with given \>10 is only 50, therefore we will lower the threshold to given = 3.
+
+```{r}
+e3 <- evaluationScheme(df_mat2, method="split", train=0.9,
+                       k=1, given=3,goodRating=6.5)
+e3
+```
+
+```{r}
+getData(e3, "train")
+```
+
+That leaves us with 79 users to train from and 9 on the test set.
+
+```{r}
+r3_popular <- Recommender(getData(e3, "train"), "POPULAR")
+r3_popular
+```
+
+```{r}
+p3_popular <- predict(r3_popular, getData(e3, "known"), type = "topNList")
+p3_popular
+```
+
+```{r}
+calcPredictionAccuracy(p3_popular, getData(e3, "unknown"), given = 10, goodRating = 6.5)
+```
+
+The test set would be too small if given was higher than 3. Therefore we will leave this threshold, as we are working on a subset of all users.
+
+The TPR is equal to 0.08, so it is much higher than for the models, using all genres, even though we are using a much lower given. Let us display the top 10 list by popularity in this case.
+
+```{r}
+as(p3_popular, 'list')[1]
+```
+
+"Enduser" was found to be top 10, most popular. Lets graph precision vs. recall from this model.
+
+```{r}
+results <- evaluate(x=e2, method="POPULAR", n=c(1,3,5,10,100))
+getConfusionMatrix(results)
+plot(results, "prec/rec", annotate=T, main="Precision/Recall")
+```
+
+As we can see this model has a slightly better performance then all of the ones using all artists from all genres. By limiting scope, by getting initial information from the user we can improve the performance of non-personalized algorithms, for example filtering by popular.
+
+# Collaborative Filtering Recommenders
+
+We will use the previously calculated e2, evaluation schema using the good rating of 6.5, with given minimum reviews of 10, across all genres.
+
+First let us train the User-Based Collaborative Filtering method, that means we will select users with common rated items. Later we predict the rating matrix using the known data. To then calculate our error metrics.
+
+```{r}
+r_ubcf <- Recommender(getData(e2, "train"), "UBCF")
+```
+
+```{r}
+p_ubcf <- predict(r_ubcf, getData(e2, "known"), type="ratings")
+p_ubcf
+```
+
+```{r}
+calcPredictionAccuracy(p_ubcf, getData(e2, "unknown"))
+```
+
+This model does not have lower error metrics than the popular method.
+
+```{r}
+as(p_ubcf, 'list')$`0`[1:12]
+```
+
+Similar to random and popular we obtain a full matrix of predicted ratings per item, with the items used in the known part of data being NA-s.
+
+## Parameter Optimization
+
+We tried to build more UBCF and IBCF models over here, with hyper parameters changed, to compare the model performance. Lets see the list of parameters to be changed, for all of the possible types of models using the "Recommender" function from "recommenderlab".
+
+```{r}
+recommender_models <- recommenderRegistry$get_entries(dataType = "realRatingMatrix")
+recommender_models
+```
+
+First, for the UBCF. The parameters displayed are the default parameters.
+
+```{r}
+recommender_models$UBCF_realRatingMatrix$parameters
+```
+
+For the IBCF.
+
+```{r}
+recommender_models$IBCF_realRatingMatrix$parameters
+```
+
+## Setting parameters
+
+We put the methods in a list specified, we save it and then input this variable into the Recommender function. In this case we set two parameters: the method use to be Jaccard and the normalization to be done using the Z-score method.
+
+```{r}
+param_test_1 <- list(method = 'jaccard', normalize = 'Z-score')
+
+r_ubcf_test_1 <- Recommender(getData(e2, "train"), "UBCF",
+                 parameter = param_test_1)
+```
+
+```{r}
+p_ubcf_test_1 <- predict(r_ubcf_test_1, getData(e2, "known"), type="ratings")
+p_ubcf_test_1
+```
+
+```{r}
+calcPredictionAccuracy(p_ubcf_test_1, getData(e2, "unknown"))
+```
+
+We recieved a slightly better error metrics than for UBCF with default parameters. Lets now run different model combinations using both IB and UB collaborative filtering, with different parameters. We set a vector k to iterate through the numbers in the vector in this case 5 to 40 by every 5. This is a parameter to set the "k" for IBCF and "nn" for UBCF. We also add an alpha parameter to traverse between the model-based predictions and item based predictions. It is mostly in important parameter in IBCF.
+
+```{r}
+vector_k <- c(5, 10, 20, 30) # Scope Limited for both, because of long time of calculation.
+vector_alpha <- c(0.4, 0.5, 0.6) # Aslo limited
+models_to_evaluate_IBCF <- sapply(vector_k, function(k){
+  sapply(vector_alpha, function(alp){
+    list(
+    IBCF_cos = list(name = "IBCF", 
+                    param = list(method = "cosine", k=k, alpha = alp)),
+    IBCF_cor = list(name = "IBCF", 
+                    param = list(method = "pearson", k=k, alpha = alp)),
+    IBCF_cos_zs = list(name = "IBCF", 
+                    param = list(method = "cosine", k=k, normalize = 'Z-score', alpha = alp)),
+    IBCF_cor_zs = list(name = "IBCF", 
+                    param = list(method = "pearson", k=k, normalize = 'Z-score', alpha = alp)),
+    IBCF_cos_mm = list(name = "IBCF", 
+                    param = list(method = "cosine", k=k, normalize_sim_matrix = TRUE, alpha = alp)),
+    IBCF_cor_mm = list(name = "IBCF", 
+                    param = list(method = "pearson", k=k, normalize_sim_matrix = TRUE, alpha = alp)))
+  })
+})
+```
+
+```{r}
+vector_nn <- c(5, 10, 15, 20, 25, 30, 35, 40)
+models_to_evaluate_UBCF <- sapply(vector_nn, function(nn){
+    list(
+    UBCF_cos = list(name = "UBCF", 
+                    param = list(method = "cosine", nn=nn)),
+    UBCF_cor = list(name = "UBCF", 
+                    param = list(method = "pearson", nn=nn)),
+    UBCF_cos_zs = list(name = "UBCF", 
+                    param = list(method = "cosine", nn=nn, normalize = 'Z-score')),
+    UBCF_cor_zs = list(name = "UBCF", 
+                    param = list(method = "pearson", nn=nn, normalize = 'Z-score')),
+    UBCF_cos_we = list(name = "UBCF", 
+                    param = list(method = "cosine", nn=nn, weighted = FALSE)),
+    UBCF_cor_we = list(name = "UBCF", 
+                    param = list(method = "pearson", nn=nn, weighted = FALSE)))
+})
+```
+
+```{r}
+# For loops for naming the models
+result_vector <- c()
+
+for (i in vector_k){
+  for (j in vector_alpha){
+    
+    value_to_add <- c(paste0("IBCF_cos_k_", i, "_alpha_", j),
+                               paste0("IBCF_cor_k_", i, "_alpha_", j),
+                               paste0("IBCF_cos_zs_k_", i, "_alpha_", j),
+                               paste0("IBCF_cor_zs_k_", i, "_alpha_", j),
+                               paste0("IBCF_cos_mm_k_", i, "_alpha_", j),
+                               paste0("IBCF_cor_mm_k_", i, "_alpha_", j)
+                               )
+    
+    result_vector <- c(result_vector, value_to_add)
+  }
+}
+
+result_vector2 <- c()
+
+for (i in vector_nn){
+  
+  value_to_add <- c(paste0("UBCF_cos_nn_", i),
+                               paste0("UBCF_cor_nn_", i),
+                               paste0("UBCF_cos_zs_nn_", i),
+                               paste0("UBCF_cor_zs_nn_", i),
+                               paste0("UBCF_cos_we_nn_", i),
+                               paste0("UBCF_cor_we_nn_", i)
+                               )
+  
+  result_vector2 <- c(result_vector2, value_to_add)
+}
+```
+
+```{r}
+# Adding the names to models
+names(models_to_evaluate_IBCF) <- result_vector
+names(models_to_evaluate_UBCF) <- result_vector2
+```
+
+```{r}
+# Model selection IBCF, for example 57
+models_to_evaluate_IBCF[50]
+```
+
+Here we chose one of the many models we've created, we are able to see the parametres for model 50, which is an IBCF model with pearson method, k = 20, default normalization and alpha of 0.6. Note they are blank models, we have not trained anything yet on them.
+
+```{r}
+# Model selection UBCF, for example 6
+models_to_evaluate_UBCF[6]
+```
+
+Here we are using a UBCF model with pearson method nn = 5, normalization by 'center'. Weighted by FALSE.
+
+Turning The IBCF Matrix into a List
+
+```{r}
+#For some reason as.list() did not work
+models_to_evaluate_IBCF_list <- c()
+
+for (i in 1:length(models_to_evaluate_IBCF)) {
+  row_list <-  models_to_evaluate_IBCF[i]
+  
+  models_to_evaluate_IBCF_list <- c(models_to_evaluate_IBCF_list, row_list)
+}
+
+models_to_evaluate_UBCF_list <- c()
+
+for (i in 1:length(models_to_evaluate_UBCF)) {
+  row_list <-  models_to_evaluate_UBCF[i]
+  
+  models_to_evaluate_UBCF_list <- c(models_to_evaluate_UBCF_list, row_list)
+}
+```
+
+Now let us test those algorithms and see which one performs the best.
+
+First we will decide the top n to display on the evaluation metrics.
+
+```{r}
+n_recommendations <- c(1, 5, 10)
+```
+
+Here we run the evaluate function with all of the models we constructed.
+
+```{r}
+list_results_UBCF <- evaluate(x = e2, 
+                         method = models_to_evaluate_UBCF_list, 
+                         n = n_recommendations)
+```
+
+```{r}
+# WATCH OUT THIS TAKES AROUND 36 MINS to RUN
+
+list_results_IBCF <- evaluate(x = e2, 
+                         method = models_to_evaluate_IBCF_list, 
+                         n = n_recommendations)
+```
+
+```{r}
+confusion_matrices_list <- c()
+
+for (i in seq_along(list_results_UBCF)){
+  confusion_matrix <- getConfusionMatrix(list_results_UBCF[[i]])
+  confusion_matrix_df <- as.data.frame(confusion_matrix)
+  confusion_matrix_df$model_name <- names(list_results_UBCF)[[i]]
+  confusion_matrices_list[[i]] <- confusion_matrix_df
+}
+
+combined_df <- do.call(rbind, confusion_matrices_list)
+```
+
+```{r}
+combined_df
+```
+
+We have the results of all of the models we've created for the user based collaborative filtering, let us see the best score for top 10 list. We will look at the TPR.
+
+```{r}
+insight_1 <- combined_df %>% filter(n == 10) %>% arrange(desc(TPR))
+insight_1
+```
+
+Best performing UBCF models were the most basic ones, no matter the 'nn' parameter, they used pearson correlation method. They are with precision of 0.03 and recall of 0.002. Methods using Z-score centralization and and non weighted coeficcients were found to be performing worse then the methods using central normalization.
+
+Now, let us see the results for the IBCF.
+
+```{r}
+confusion_matrices_list2 <- c()
+
+for (i in seq_along(list_results_IBCF)){
+  confusion_matrix <- getConfusionMatrix(list_results_IBCF[[i]])
+  confusion_matrix_df <- as.data.frame(confusion_matrix)
+  confusion_matrix_df$model_name <- names(list_results_IBCF)[[i]]
+  confusion_matrices_list2[[i]] <- confusion_matrix_df
+}
+
+combined_df2 <- do.call(rbind, confusion_matrices_list2)
+```
+
+```{r}
+insight_2 <- combined_df2 %>% filter(n == 10) %>% arrange(desc(TPR))
+insight_2
+```
+
+IBCF_cor_zs_k_30_alpha_0.4 is the best model with the highest TPR, it has a k of 30 and an alpha of 0.4, though models with alpha 0.5 and 0.6 are of the same statistic. It is pearson based and it uses Z-score normalization.
