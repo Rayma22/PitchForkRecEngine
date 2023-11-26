@@ -10,6 +10,8 @@ knitr::opts_chunk$set(echo = TRUE)
 
 # Non-personalized Recommenders
 
+To address the cold start problems, especially for new users. A series of non personalized recommendation engines were created and tested. 3 approaches were used to recommend the top 10 list of items, or artists in our case for a brand new user just joining the service. Those are recommendation by random, by item popularity and by a hybrid method joining the previous two. In further part we test, evaluate and check those models to correspond for the best possible method of non personalized recommendations.
+
 ## Read in Libraries and Data
 
 Read In Necessary Libraries
@@ -155,12 +157,12 @@ Here a code block to understand more about the made predictions.
 #Some info about our predictions
 # Adviced, run by one.
 
-dimnames(p_rerec)
-rowCounts(p_rerec) ## number of ratings per user
-colCounts(p_rerec) ## number of ratings per item
-colMeans(p_rerec) ## average item rating
-nratings(p_rerec) ## total number of ratings
-hasRating(p_rerec)
+dimnames(p_rerec) # names
+rowCounts(p_rerec) # number of ratings per user
+colCounts(p_rerec) # number of ratings per item
+colMeans(p_rerec) # average item rating
+nratings(p_rerec) # total number of ratings
+hasRating(p_rerec) # has rating yes/no
 ```
 
 Example of the imputed ratings for user 0 in the test set. First 12 artists.
@@ -257,7 +259,7 @@ calcPredictionAccuracy(p2_popular, getData(e2, "unknown"), given = 10, goodRatin
 calcPredictionAccuracy(p2_hybrid, getData(e2, "unknown"), given = 10, goodRating = 6.5)
 ```
 
-Unfortunately, the prediction accuracy for both of those non-personalized recommendation engines is very poor, with the popular method doing slightly better with the true positive rate of: 0.014 vs. 0.0007 for random. Hybrid was close to popular with TPR of 0.002, performing only slightly worse then popular.
+Unfortunately, the prediction accuracy for both of those non-personalized recommendation engines is very poor, with the popular method doing slightly better with the true positive rate of: 0.014 vs. 0.0007 for random. Hybrid was close to popular with TPR of 0.002, performing only slightly worse then popular. Still, the popular method seems to be the best fit for our recommendation engine.
 
 ## Further model evaluation
 
@@ -412,7 +414,7 @@ calcPredictionAccuracy(p3_popular, getData(e3, "unknown"), given = 10, goodRatin
 
 The test set would be too small if given was higher than 3. Therefore we will leave this threshold, as we are working on a subset of all users.
 
-The TPR is equal to 0.08, so it is much higher than for the models, using all genres, even though we are using a much lower given. Let us display the top 10 list by popularity in this case.
+The TPR is equal to 0.08, so it is higher than for the models, using all genres, even though we are using a much lower given. Let us display the top 10 list by popularity in this case.
 
 ```{r}
 as(p3_popular, 'list')[1]
@@ -447,13 +449,13 @@ p_ubcf
 calcPredictionAccuracy(p_ubcf, getData(e2, "unknown"))
 ```
 
-This model does not have lower error metrics than the popular method.
+This model does not have lower error metrics than the popular method. Here we can see the first 12 predicted ratings for user 0.
 
 ```{r}
 as(p_ubcf, 'list')$`0`[1:12]
 ```
 
-Similar to random and popular we obtain a full matrix of predicted ratings per item, with the items used in the known part of data being NA-s.
+Similar to random and popular we obtain a full matrix of predicted ratings per item, with the items used in the known part of data being NA-s. Now, we will move on to constructing several Item and User Based Collaborative Filtering Methods.
 
 ## Parameter Optimization
 
@@ -470,11 +472,19 @@ First, for the UBCF. The parameters displayed are the default parameters.
 recommender_models$UBCF_realRatingMatrix$parameters
 ```
 
+We can change the method to cosine or pearson, adjust the number nn - nearest neighbours used in the model, if we want to use weighted so the strength of the similarity between users and items. We can also use a different normalization technique either center or Z-Score.
+
 For the IBCF.
 
 ```{r}
 recommender_models$IBCF_realRatingMatrix$parameters
 ```
+
+Most parameters in IBCF are similar, we can adjust k also the number of nearest neighbors, method or normalization. We can also decide if we want to normalize the similarity_matrix or not.
+
+In UBCF we will select the neighbours that have common rated items, it then calculated the similarity metric for example using the kNN. Estimate who's most similar comparing the metric to neighbors. Then it calculates the estimated rating of the active user using top predictions.
+
+In IBCF the process is similar, but we twist the matrix. That means it is using rating distributions along the items not users. The those are compared to be most similar to liked items.
 
 ## Setting parameters
 
@@ -498,6 +508,8 @@ calcPredictionAccuracy(p_ubcf_test_1, getData(e2, "unknown"))
 
 We recieved a slightly worse error metrics than for UBCF with default parameters. Lets now run different model combinations using both IB and UB collaborative filtering, with different parameters. We set a vector k to iterate through the numbers in the vector. This is a parameter to set the "k" for IBCF and "nn" for UBCF. We also add an alpha parameter to traverse between the model-based predictions and item based predictions. It is mostly an important parameter in IBCF.
 
+Here we create an algorithm creating multiple IBCF models, with interchangeable parameters k and alpha. We are using a combination of methods like pearson or cosine, different normalization techniques and similarity_matrix normalization.
+
 ```{r}
 vector_k <- c(5, 10, 20, 30) # Scope Limited for both, because of long time of calculation.
 vector_alpha <- c(0.4, 0.5, 0.6) # Aslo limited
@@ -520,6 +532,8 @@ models_to_evaluate_IBCF <- sapply(vector_k, function(k){
 })
 ```
 
+Here we create the UBCF creating algorithm. We use a bigger vector nn, since this method is much faster to be calculated.
+
 ```{r}
 vector_nn <- c(5, 10, 15, 20, 25, 30, 35, 40)
 models_to_evaluate_UBCF <- sapply(vector_nn, function(nn){
@@ -538,6 +552,8 @@ models_to_evaluate_UBCF <- sapply(vector_nn, function(nn){
                     param = list(method = "pearson", nn=nn, weighted = FALSE)))
 })
 ```
+
+In this code block we simply name the constructed algorithms, there can easily be called later to check each models hyper parameters.
 
 ```{r}
 # For loops for naming the models
@@ -580,6 +596,8 @@ names(models_to_evaluate_IBCF) <- result_vector
 names(models_to_evaluate_UBCF) <- result_vector2
 ```
 
+Here is an example of one of the created models to be tested.
+
 ```{r}
 # Model selection IBCF, for example 57
 models_to_evaluate_IBCF[50]
@@ -594,7 +612,7 @@ models_to_evaluate_UBCF[6]
 
 Here we are using a UBCF model with pearson method nn = 5, normalization by 'center'. Weighted by FALSE.
 
-Turning The IBCF Matrix into a List
+Turning The IBCF Matrix into a List - Using the sapply function creates a two dimentional matrix which the evaluation matrix cannot take in and process, we will therefore turn this matirx into a list, using a for loop since conventional methods did not work.
 
 ```{r}
 #For some reason as.list() did not work
@@ -638,6 +656,8 @@ list_results_IBCF <- evaluate(x = e2,
                          method = models_to_evaluate_IBCF_list, 
                          n = n_recommendations)
 ```
+
+Here we created a table containing all confusion matrix information for every number of n for every single model, from here we can filter and choose the model that performes the best.
 
 ```{r}
 confusion_matrices_list <- c()
@@ -705,6 +725,8 @@ models_to_evaluate_IBCF_2 <- sapply(vector_k2, function(k2){
 })
 ```
 
+We name the models again to know the parameters.
+
 ```{r}
 result_vector3 <- c()
 
@@ -727,6 +749,8 @@ for (i in vector_k2){
 names(models_to_evaluate_UBCF_2) <- result_vector3
 names(models_to_evaluate_IBCF_2) <- result_vector4
 ```
+
+Since we used a single dimension for the sapply function we do not need to transform a matrix into a list, since the matrix is of n x 1 dimension.
 
 ```{r}
 list_results_UBCF_2 <- evaluate(x = e2, 
@@ -769,10 +793,14 @@ insight_3 <- combined_df3 %>% filter(n == 10) %>% arrange(desc(TPR))
 insight_3
 ```
 
+The best model coincided with the previous finding for the UBCF.
+
 ```{r}
 insight_4 <- combined_df4 %>% filter(n == 10) %>% arrange(desc(TPR))
 insight_4
 ```
+
+The IBCF model also corresponded to the previous finding the number of k is set. Here we are using it for the prediction of the topNlist, using the IBCF method.
 
 ```{r}
 rec_col <- Recommender(getData(e3, "train"), method = "IBCF", parameter = list(method = "pearson", k=30, normalize = 'Z-score', alpha=0.4))
@@ -781,5 +809,9 @@ pcol_popular
 ```
 
 ```{r}
-as(pcol_popular, 'list')
+as(pcol_popular, 'list')$`9`
 ```
+
+We predict for user number 9, from the recommended items we can see this user enjoys electronic music. Autechre seems to be nr. 1 along with some other big names like Justice, Massive Attack or The Chemical Brothers also in the top 10 list.
+
+Overall, this method seems the best for personalized recommendations. The future recommendation would be to get more user ratings since we are using only around 250 users and we have as much as around 9000 items. With more potential patterns to compare to different users, we would likely improve the performance of our model.
