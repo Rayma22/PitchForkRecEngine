@@ -773,3 +773,13 @@ insight_3
 insight_4 <- combined_df4 %>% filter(n == 10) %>% arrange(desc(TPR))
 insight_4
 ```
+
+```{r}
+rec_col <- Recommender(getData(e3, "train"), method = "IBCF", parameter = list(method = "pearson", k=30, normalize = 'Z-score', alpha=0.4))
+pcol_popular <- predict(rec_col, getData(e3, "known"), type = "topNList")
+pcol_popular
+```
+
+```{r}
+as(pcol_popular, 'list')
+```
